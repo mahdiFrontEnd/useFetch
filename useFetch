@@ -1,39 +1,48 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
+type FetchState<T> =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: T }
+  | { status: "error"; error: Error };
 
-//Take the url through the props 
-export const useFetch = (url) => {
+export function useFetch<T>(url: string): FetchState<T> {
+  const [state, setState] = useState<FetchState<T>>({ status: "idle" });
 
-    //React useState Hooks
-    const [loading, setLoading] = useState(true);
-    const [data, setData] = useState([]);
-    const [error, setError] = useState(false);
+  useEffect(() => {
+    if (!url) {
+      setState({ status: "idle" });
+      return;
+    }
 
-    //Fetch the data when app is rendered 
-    useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading" });
 
-        const getData = async () => {
-            try {
+    const getData = async () => {
+      try {
+        const response = await fetch(url, { signal: controller.signal });
 
-                const response = await fetch(url);
-                const results = await response.json();
-                setLoading(false)
-                setData(results.data);
-                setError(false)
-
-            } catch (error) {
-                setLoading(false)
-                setError(error)
-            }
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        getData();
+        const data = (await response.json()) as T;
+        setState({ status: "success", data });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return; // ← درخواست کنسل شده، نادیده بگیر
+        }
+        setState({
+          status: "error",
+          error: err instanceof Error ? err : new Error("Unknown error"),
+        });
+      }
+    };
 
-    }, [url]);
+    getData();
 
-    return {
-        loading,
-        data,
-        error
-    }
+    return () => controller.abort();
+  }, [url]);
+
+  return state;
 }
